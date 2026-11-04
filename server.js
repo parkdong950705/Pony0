@@ -50,14 +50,12 @@ function saveMetadata(data) {
     }
 }
 
-// 🌐 깃허브 API 간소화 및 404 에러 원천 차단 함수
+// 🌐 깃허브 API 통신 함수
 function syncFileToGithub(fileName, fileBuffer) {
     if (!isGithubSyncEnabled) return;
 
-    // 경로 정합성 맞추기 (예: uploads/파일명)
     const apiPath = `/repos/${GITHUB_REPO}/contents/uploads/${fileName}`;
     
-    // 먼저 기존 파일의 SHA 값을 조회한 뒤 PUT 요청
     const getOptions = {
         hostname: 'api.github.com',
         path: apiPath,
@@ -349,4 +347,22 @@ app.get('/api/download-sync-zip', (req, res) => {
     const archive = archiver('zip', { zlib: { level: 9 } });
     res.attachment('github-uploads-sync.zip');
 
-    archive.on('error', (err)
+    archive.on('error', (err) => {
+        res.status(500).send({ error: err.message });
+    });
+
+    archive.pipe(res);
+    archive.directory(uploadsDir, false);
+    if (fs.existsSync(metaFile)) {
+        archive.file(metaFile, { name: 'metadata.json' });
+    }
+    archive.finalize();
+});
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'ffx-panel', 'index.html'));
+});
+
+app.listen(PORT, () => {
+    console.log(`🚀 서버가 포트 ${PORT}에서 정상적으로 실행 중입니다.`);
+});
