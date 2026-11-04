@@ -2,59 +2,97 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>FFX Cloud Studio</title>
-    <link rel="stylesheet" href="styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFX Cloud Studio - Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 </head>
 <body>
-    <div class="tab-container">
-        <button class="tab-btn active" data-tab="tab-presets">🎬 프리셋 라이브러리</button>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo-area">
+                <span class="material-icons-round logo-icon">cloud_queue</span>
+                <h1>FFX Cloud Studio</h1>
+            </div>
+            <div class="header-badge">Pro Cloud Storage</div>
+        </header>
+
+        <main class="main-content">
+            <section class="upload-section glass-card">
+                <h2><span class="material-icons-round">upload_file</span> 프리셋 & 에셋 업로드</h2>
+                
+                <div class="upload-grid">
+                    <div class="file-drop-zone file-select-trigger" id="effect-drop-zone">
+                        <span class="material-icons-round">movie</span>
+                        <div class="file-info-text">
+                            <span class="primary-text" id="file-name-display">효과 파일 (.ffx / .mogrt) 선택 (선택사항)</span>
+                            <span class="sub-text">클릭하여 파일을 업로드하세요</span>
+                        </div>
+                        <input type="file" id="file-input" accept=".ffx,.mogrt" style="display: none;">
+                    </div>
+
+                    <div class="file-drop-zone thumb-select-trigger" id="thumb-drop-zone">
+                        <div class="preview-container" id="thumb-preview-box">
+                            <span class="material-icons-round">image</span>
+                            <span class="primary-text" id="thumb-name-display">썸네일/이미지 파일 선택</span>
+                        </div>
+                        <input type="file" id="thumb-input" accept="image/*" style="display: none;">
+                    </div>
+                </div>
+
+                <div class="category-select-group">
+                    <label><span class="material-icons-round">category</span> 에셋 분류 카테고리</label>
+                    <div class="radio-chips">
+                        <label class="chip">
+                            <input type="radio" name="category" value="motion" checked>
+                            <span>🎬 모션 그래픽</span>
+                        </label>
+                        <label class="chip">
+                            <input type="radio" name="category" value="subtitle">
+                            <span>💬 자막 효과</span>
+                        </label>
+                        <label class="chip">
+                            <input type="radio" name="category" value="illustration">
+                            <span>🎨 단순 일러스트</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button class="btn-primary-glow" id="upload-btn">
+                    <span class="material-icons-round">rocket_launch</span> 클라우드에 안전하게 업로드하기
+                </button>
+            </section>
+
+            <section class="library-section">
+                <div class="library-header">
+                    <h2><span class="material-icons-round">folder_special</span> 클라우드 아이콘 라이브러리</h2>
+                    <div class="search-box">
+                        <span class="material-icons-round">search</span>
+                        <input type="text" id="search-input" placeholder="프리셋 검색 후 엔터 (Enter)...">
+                    </div>
+                </div>
+
+                <div class="library-tabs">
+                    <button class="tab-btn active" data-tab="all">전체 보기</button>
+                    <button class="tab-btn" data-tab="motion">🎬 모션 그래픽</button>
+                    <button class="tab-btn" data-tab="subtitle">💬 자막 효과</button>
+                    <button class="tab-btn" data-tab="illustration">🎨 단순 일러스트</button>
+                </div>
+
+                <div class="preset-grid" id="preset-grid">
+                    <div class="empty-state">등록된 프리셋이 없습니다.</div>
+                </div>
+            </section>
+
+            <div style="margin-top: 50px; text-align: center; padding-bottom: 20px;">
+                <button id="github-sync-btn" style="background: rgba(255, 255, 255, 0.05); color: #cbd5e1; border: 1px solid rgba(255, 255, 255, 0.15); padding: 14px 28px; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; transition: 0.3s;">
+                    <span class="material-icons-round" style="color: #818cf8;">cloud_download</span> 📦 깃허브 저장용 업로드 파일(ZIP) 백업하기
+                </button>
+            </div>
+        </main>
     </div>
 
-    <div id="tab-presets" class="tab-content active">
-        <div class="section-card">
-            <h2>☁️ 프리셋 & 썸네일 업로드</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                <div>
-                    <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">1. 효과 파일 (.ffx / .mogrt)</label>
-                    <button class="btn secondary" id="btn-select-preset" style="width: 100%;">📦 파일 선택</button>
-                    <span id="preset-file-name" style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 4px;">선택된 파일 없음</span>
-                </div>
-                <div>
-                    <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">2. 썸네일 이미지</label>
-                    <button class="btn secondary" id="btn-select-thumb" style="width: 100%;">🖼️ 썸네일 선택</button>
-                    <span id="thumb-file-name" style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 4px;">선택된 이미지 없음</span>
-                </div>
-            </div>
-
-            <input type="file" id="ffx-file-input" accept=".ffx,.mogrt" style="display: none;">
-            <input type="file" id="thumb-file-input" accept="image/*" style="display: none;">
-
-            <button class="btn primary" id="btn-upload-submit" style="width: 100%; margin-top: 8px;">🚀 클라우드에 업로드하기</button>
-
-            <div id="upload-progress-container" style="display: none; margin-top: 15px;">
-                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; color: #fff;">
-                    <span id="upload-status-text">업로드 중...</span>
-                    <span id="upload-percent">0%</span>
-                </div>
-                <div style="width: 100%; background-color: #333; border-radius: 4px; overflow: hidden; height: 8px;">
-                    <div id="upload-progress-bar" style="width: 0%; height: 100%; background-color: #1473e6; transition: width 0.2s;"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="section-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h2 style="margin: 0;">📦 클라우드 아이콘 라이브러리</h2>
-                <button class="icon-btn" id="btn-refresh" title="새로고침">🔄</button>
-            </div>
-            <div class="search-box-wrapper" style="margin-bottom: 15px;">
-                <input type="text" id="preset-search" placeholder="프리셋 검색...">
-            </div>
-            <div id="preset-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;">
-                <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 20px;">목록 로딩 중...</div>
-            </div>
-        </div>
-    </div>
     <script src="main.js"></script>
 </body>
 </html>

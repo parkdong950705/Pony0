@@ -1,123 +1,227 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const SERVER_URL = 'http://localhost:3000';
+    const SERVER_URL = 'https://pony0.onrender.com';
+
+    const fileInput = document.getElementById('file-input');
+    const thumbInput = document.getElementById('thumb-input');
+    const uploadBtn = document.getElementById('upload-btn');
+    const gridEl = document.getElementById('preset-grid');
+    const searchInput = document.getElementById('search-input');
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const githubSyncBtn = document.getElementById('github-sync-btn');
+
+    let allPresets = [];
+    let currentCategoryFilter = 'all';
+    let currentSearchKeyword = '';
+
+    const fileSelectTrigger = document.querySelector('.file-select-trigger');
+    const thumbSelectTrigger = document.querySelector('.thumb-select-trigger');
+
+    if (fileSelectTrigger && fileInput) {
+        fileSelectTrigger.addEventListener('click', () => fileInput.click());
+    }
+    if (thumbSelectTrigger && thumbInput) {
+        thumbSelectTrigger.addEventListener('click', () => thumbInput.click());
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', () => {
+            const fileName = fileInput.files[0] ? fileInput.files[0].name : '효과 파일 (.ffx / .mogrt) 선택 (선택사항)';
+            document.getElementById('file-name-display').textContent = fileName;
+        });
+    }
+
+    if (thumbInput) {
+        thumbInput.addEventListener('change', () => {
+            const file = thumbInput.files[0];
+            const previewBox = document.getElementById('thumb-preview-box');
+            
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewBox.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <img src="${e.target.result}" class="preview-thumb-img">
+                            <span class="primary-text">${file.name}</span>
+                        </div>
+                    `;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                previewBox.innerHTML = `
+                    <span class="material-icons-round">image</span>
+                    <span class="primary-text" id="thumb-name-display">썸네일/이미지 파일 선택</span>
+                `;
+            }
+        });
+    }
 
     async function fetchPresets() {
         try {
             const response = await fetch(`${SERVER_URL}/api/presets`);
-            const presets = await response.json();
-            const gridEl = document.getElementById('preset-grid');
-            
-            if (!presets || presets.length === 0) {
-                gridEl.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 20px;">저장된 프리셋이 없습니다.</div>';
-                return;
+            allPresets = await response.json();
+            renderPresets();
+        } catch (error) {
+            console.error('서버 연결 실패:', error);
+            if (gridEl) {
+                gridEl.innerHTML = '<div class="empty-state" style="color: #ff4d4d;">서버 연결에 실패했습니다.</div>';
             }
-
-            gridEl.innerHTML = presets.map(item => {
-                const name = item.NAME || item.name;
-                const thumb = item.THUMBNAIL || item.thumbnail || 'default-thumb.png';
-                const thumbUrl = `${SERVER_URL}/uploads/${thumb}`;
-
-                return `
-                    <div class="preset-card">
-                        <img src="${thumbUrl}" class="preset-thumb" alt="썸네일">
-                        <div class="preset-info">
-                            <div class="preset-name" title="${name}">${name}</div>
-                            <button class="btn primary download-btn" data-filename="${name}" style="width: 100%; padding: 4px; font-size: 11px;">다운로드</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            document.querySelectorAll('.download-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const filename = e.target.getAttribute('data-filename');
-                    window.location.href = `${SERVER_URL}/api/download/${encodeURIComponent(filename)}`;
-                });
-            });
-        } catch (err) {
-            document.getElementById('preset-grid').innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #d7373f; padding: 20px;">서버 연결 실패</div>';
         }
     }
 
-    const presetFileInput = document.getElementById('ffx-file-input');
-    const thumbFileInput = document.getElementById('thumb-file-input');
-    const presetFileNameSpan = document.getElementById('preset-file-name');
-    const thumbFileNameSpan = document.getElementById('thumb-file-name');
-    
-    let selectedPresetFile = null;
-    let selectedThumbFile = null;
+    function renderPresets() {
+        if (!gridEl) return;
 
-    document.getElementById('btn-select-preset').addEventListener('click', () => presetFileInput.click());
-    document.getElementById('btn-select-thumb').addEventListener('click', () => thumbFileInput.click());
+        let filtered = allPresets.filter(item => {
+            const name = (item.NAME || item.name || '').toLowerCase();
+            const category = item.CATEGORY || 'motion';
 
-    presetFileInput.addEventListener('change', (e) => {
-        selectedPresetFile = e.target.files[0];
-        presetFileNameSpan.textContent = selectedPresetFile ? selectedPresetFile.name : '선택된 파일 없음';
-    });
+            const matchesSearch = name.includes(currentSearchKeyword.toLowerCase());
+            const matchesTab = (currentCategoryFilter === 'all') || (category === currentCategoryFilter);
 
-    thumbFileInput.addEventListener('change', (e) => {
-        selectedThumbFile = e.target.files[0];
-        thumbFileNameSpan.textContent = selectedThumbFile ? selectedThumbFile.name : '선택된 이미지 없음';
-    });
+            return matchesSearch && matchesTab;
+        });
 
-    const progressContainer = document.getElementById('upload-progress-container');
-    const progressBar = document.getElementById('upload-progress-bar');
-    const progressPercent = document.getElementById('upload-percent');
-    const statusText = document.getElementById('upload-status-text');
-
-    document.getElementById('btn-upload-submit').addEventListener('click', () => {
-        if (!selectedPresetFile) {
-            alert('효과 파일을 선택해 주세요.');
+        if (filtered.length === 0) {
+            gridEl.innerHTML = '<div class="empty-state">검색된 프리셋이 없습니다.</div>';
             return;
         }
 
-        const formData = new FormData();
-        formData.append('presetFile', selectedPresetFile);
-        if (selectedThumbFile) {
-            formData.append('thumbnailFile', selectedThumbFile);
-        }
+        gridEl.innerHTML = filtered.map(item => {
+            const name = item.NAME || item.name;
+            const thumb = item.THUMBNAIL || item.thumbnail;
+            const thumbUrl = (thumb && thumb !== 'default-thumb.png') 
+                ? `${SERVER_URL}/uploads/${thumb}` 
+                : 'https://via.placeholder.com/300x180?text=No+Image';
+            
+            let categoryLabel = '🎬 모션그래픽';
+            if (item.CATEGORY === 'illustration') categoryLabel = '🎨 일러스트';
+            if (item.CATEGORY === 'subtitle') categoryLabel = '💬 자막효과';
 
-        progressContainer.style.display = 'block';
-        progressBar.style.width = '0%';
-        progressPercent.textContent = '0%';
-        statusText.textContent = '업로드 중...';
+            return `
+                <div class="preset-card">
+                    <div class="preset-thumb-wrapper">
+                        <span class="category-badge">${categoryLabel}</span>
+                        <img src="${thumbUrl}" class="preset-thumb" alt="썸네일" onerror="this.src='https://via.placeholder.com/300x180?text=No+Image'">
+                    </div>
+                    <div class="preset-info">
+                        <div class="preset-name" title="${name}">${name}</div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn-download download-btn" data-filename="${name}" style="flex: 1; background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); padding: 10px; border-radius: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <span class="material-icons-round" style="font-size: 16px;">download</span> 다운로드
+                            </button>
+                            <button class="btn-delete delete-btn" data-filename="${name}" title="파일 삭제" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 10px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                                <span class="material-icons-round" style="font-size: 16px;">delete</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${SERVER_URL}/api/upload`, true);
-
-        xhr.upload.onprogress = function (e) {
-            if (e.lengthComputable) {
-                const percent = Math.round((e.loaded / e.total) * 100);
-                progressBar.style.width = percent + '%';
-                progressPercent.textContent = percent + '%';
+    if (searchInput) {
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                currentSearchKeyword = searchInput.value.trim();
+                renderPresets();
             }
-        };
+        });
+    }
 
-        xhr.onload = function () {
-            if (xhr.status === 200) {
-                statusText.textContent = '✅ 업로드 완료!';
-                selectedPresetFile = null;
-                selectedThumbFile = null;
-                presetFileNameSpan.textContent = '선택된 파일 없음';
-                thumbFileNameSpan.textContent = '선택된 이미지 없음';
-                presetFileInput.value = '';
-                thumbFileInput.value = '';
-                fetchPresets();
-            } else {
-                statusText.textContent = '❌ 업로드 실패';
-            }
-        };
-        xhr.send(formData);
-    });
-
-    document.getElementById('preset-search').addEventListener('input', (e) => {
-        const keyword = e.target.value.toLowerCase();
-        document.querySelectorAll('.preset-card').forEach(card => {
-            const name = card.querySelector('.preset-name').textContent.toLowerCase();
-            card.style.display = name.includes(keyword) ? 'flex' : 'none';
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentCategoryFilter = btn.getAttribute('data-tab');
+            renderPresets();
         });
     });
 
-    document.getElementById('btn-refresh').addEventListener('click', fetchPresets);
+    if (uploadBtn) {
+        uploadBtn.addEventListener('click', async () => {
+            const file = fileInput?.files[0];
+            const thumb = thumbInput?.files[0];
+            const selectedCategory = document.querySelector('input[name="category"]:checked')?.value || 'motion';
+
+            if (!file && !thumb) {
+                alert('업로드할 효과 파일(.ffx/.mogrt) 또는 이미지 파일을 최소 하나 이상 선택해주세요.');
+                return;
+            }
+
+            const formData = new FormData();
+            if (file) formData.append('effectFile', file);
+            if (thumb) formData.append('thumbFile', thumb);
+            formData.append('category', selectedCategory);
+
+            try {
+                uploadBtn.innerHTML = '<span class="material-icons-round">sync</span> 업로드 중...';
+                uploadBtn.disabled = true;
+
+                const response = await fetch(`${SERVER_URL}/api/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    alert('성공적으로 업로드되었습니다!');
+                    if (fileInput) fileInput.value = '';
+                    if (thumbInput) thumbInput.value = '';
+                    document.getElementById('file-name-display').textContent = '효과 파일 (.ffx / .mogrt) 선택 (선택사항)';
+                    document.getElementById('thumb-preview-box').innerHTML = `
+                        <span class="material-icons-round">image</span>
+                        <span class="primary-text" id="thumb-name-display">썸네일/이미지 파일 선택</span>
+                    `;
+                    fetchPresets();
+                } else {
+                    alert('업로드에 실패했습니다.');
+                }
+            } catch (error) {
+                console.error('업로드 에러:', error);
+                alert('업로드 중 오류가 발생했습니다.');
+            } finally {
+                uploadBtn.innerHTML = '<span class="material-icons-round">rocket_launch</span> 클라우드에 안전하게 업로드하기';
+                uploadBtn.disabled = false;
+            }
+        });
+    }
+
+    if (githubSyncBtn) {
+        githubSyncBtn.addEventListener('click', () => {
+            window.location.href = `${SERVER_URL}/api/download-sync-zip`;
+        });
+    }
+
+    if (gridEl) {
+        gridEl.addEventListener('click', async (e) => {
+            const downloadBtn = e.target.closest('.download-btn');
+            const deleteBtn = e.target.closest('.delete-btn');
+
+            if (downloadBtn) {
+                const filename = downloadBtn.getAttribute('data-filename');
+                window.location.href = `${SERVER_URL}/uploads/${filename}`;
+            }
+
+            if (deleteBtn) {
+                const filename = deleteBtn.getAttribute('data-filename');
+                if (confirm(`"${filename}" 파일 및 연관된 썸네일을 모두 삭제하시겠습니까?`)) {
+                    try {
+                        const response = await fetch(`${SERVER_URL}/api/delete/${encodeURIComponent(filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (response.ok) {
+                            alert('파일이 삭제되었습니다.');
+                            fetchPresets();
+                        } else {
+                            alert('파일 삭제에 실패했습니다.');
+                        }
+                    } catch (err) {
+                        console.error('삭제 에러:', err);
+                        alert('삭제 중 오류가 발생했습니다.');
+                    }
+                }
+            }
+        });
+    }
+
     fetchPresets();
 });
