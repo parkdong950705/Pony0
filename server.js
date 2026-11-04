@@ -60,7 +60,7 @@ function syncFileToGihubWithRetry(fileName, fileBuffer) {
     syncQueue = syncQueue.then(() => {
         return new Promise((resolve) => {
             syncFileToGithub(fileName, fileBuffer, () => {
-                setTimeout(resolve, 500); // 0.5초 간격을 두어 충돌 방지
+                setTimeout(resolve, 500);
             });
         });
     }).catch(() => {});
@@ -284,6 +284,7 @@ app.get('/api/presets', (req, res) => {
 
         orphanImages.forEach((imgFile) => {
             const baseName = path.parse(imgFile).name;
+            // 단독 이미지 파일은 무조건 'illustration'(단순 일러스트)로 분류 고정
             let category = metadata[imgFile] || metadata[baseName] || 'illustration';
 
             presets.push({
@@ -301,16 +302,25 @@ app.get('/api/presets', (req, res) => {
     }
 });
 
-// 파일 업로드 처리 API
+// 파일 업로드 처리 API (조건별 카테고리 자동 분기 적용)
 app.post('/api/upload', upload.fields([
     { name: 'effectFile', maxCount: 1 },
     { name: 'thumbFile', maxCount: 1 }
 ]), (req, res) => {
     try {
-        const category = req.body.category || 'motion';
+        const hasEffect = req.files && req.files['effectFile'];
+        const hasThumb = req.files && req.files['thumbFile'];
+
+        // 조건 분기: 효과파일 없이 이미지만 단독 업로드된 경우 무조건 'illustration' (단순 일러스트)
+        // 효과파일이 포함된 경우 사용자가 선택한 카테고리(motion 또는 subtitle 등) 반영
+        let category = req.body.category || 'motion';
+        if (!hasEffect && hasThumb) {
+            category = 'illustration';
+        }
+
         const metadata = loadMetadata();
 
-        if (req.files['effectFile']) {
+        if (hasEffect) {
             const fileObj = req.files['effectFile'][0];
             const effName = Buffer.from(fileObj.originalname, 'latin1').toString('utf8');
             metadata[effName] = category;
@@ -324,7 +334,7 @@ app.post('/api/upload', upload.fields([
             }
         }
 
-        if (req.files['thumbFile']) {
+        if (hasThumb) {
             const fileObj = req.files['thumbFile'][0];
             const thumbName = Buffer.from(fileObj.originalname, 'latin1').toString('utf8');
             metadata[thumbName] = category;
