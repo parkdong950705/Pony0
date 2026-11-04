@@ -21,7 +21,7 @@
         <main class="main-content">
             <section class="upload-section glass-card">
                 <h2><span class="material-icons-round">upload_file</span> 프리셋 & 에셋 업로드</h2>
-                
+
                 <div class="upload-grid">
                     <div class="file-drop-zone file-select-trigger" id="effect-drop-zone">
                         <span class="material-icons-round">movie</span>
@@ -42,7 +42,9 @@
                 </div>
 
                 <div class="category-select-group">
-                    <label><span class="material-icons-round">category</span> 에셋 분류 카테고리</label>
+                    <div class="group-label">
+                        <span class="material-icons-round">category</span> 에셋 분류 카테고리
+                    </div>
                     <div class="radio-chips">
                         <label class="chip">
                             <input type="radio" name="category" value="motion" checked>
@@ -85,9 +87,9 @@
                 </div>
             </section>
 
-            <div style="margin-top: 50px; text-align: center; padding-bottom: 20px;">
-                <button id="github-sync-btn" style="background: rgba(255, 255, 255, 0.05); color: #cbd5e1; border: 1px solid rgba(255, 255, 255, 0.15); padding: 14px 28px; border-radius: 30px; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; transition: 0.3s;">
-                    <span class="material-icons-round" style="color: #818cf8;">cloud_download</span> 📦 깃허브 저장용 업로드 파일(ZIP) 백업하기
+            <div class="backup-area">
+                <button id="github-sync-btn" class="btn-backup">
+                    <span class="material-icons-round">cloud_download</span> 📦 깃허브 저장용 업로드 파일(ZIP) 백업하기
                 </button>
             </div>
         </main>
