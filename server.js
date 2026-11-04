@@ -241,7 +241,7 @@ app.get('/main.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'ffx-panel', 'main.js'));
 });
 
-// 프리셋 목록 조회 API
+// 프리셋 목록 조회 API (썸네일 중첩 방지 및 1:1 독립 매칭 적용)
 app.get('/api/presets', (req, res) => {
     try {
         if (!fs.existsSync(uploadsDir)) {
@@ -255,18 +255,17 @@ app.get('/api/presets', (req, res) => {
         
         let presets = [];
         let idCounter = 1;
+        let matchedImages = new Set(); // 썸네일 중첩 방지용 세트
 
-        effectFiles.forEach((file, index) => {
+        // 1. 효과 파일 처리 (이름이 일치하는 정확한 썸네일만 1:1 매칭)
+        effectFiles.forEach((file) => {
             const baseName = path.parse(file).name;
             let thumbFile = 'default-thumb.png';
             
             const exactThumb = imageFiles.find(f => path.parse(f).name === baseName);
             if (exactThumb) {
                 thumbFile = exactThumb;
-            } else if (imageFiles[index]) {
-                thumbFile = imageFiles[index];
-            } else if (imageFiles.length > 0) {
-                thumbFile = imageFiles[0];
+                matchedImages.add(exactThumb); // 매칭된 썸네일은 중첩 방지를 위해 기록
             }
 
             let category = metadata[file] || metadata[baseName] || 'motion';
@@ -279,20 +278,19 @@ app.get('/api/presets', (req, res) => {
             });
         });
 
-        const matchedThumbnames = presets.map(p => p.THUMBNAIL);
-        const orphanImages = imageFiles.filter(img => !matchedThumbnames.includes(img));
+        // 2. 단독 이미지 파일 처리 (효과 파일과 짝이 없고 단독으로 올라간 이미지만 '단순 일러스트' 세트로 처리)
+        imageFiles.forEach((imgFile) => {
+            if (!matchedImages.has(imgFile)) {
+                const baseName = path.parse(imgFile).name;
+                let category = metadata[imgFile] || metadata[baseName] || 'illustration';
 
-        orphanImages.forEach((imgFile) => {
-            const baseName = path.parse(imgFile).name;
-            // 단독 이미지 파일은 무조건 'illustration'(단순 일러스트)로 분류 고정
-            let category = metadata[imgFile] || metadata[baseName] || 'illustration';
-
-            presets.push({
-                id: idCounter++,
-                NAME: imgFile,
-                THUMBNAIL: imgFile,
-                CATEGORY: category
-            });
+                presets.push({
+                    id: idCounter++,
+                    NAME: imgFile,
+                    THUMBNAIL: imgFile,
+                    CATEGORY: category
+                });
+            }
         });
         
         res.json(presets);
@@ -302,7 +300,7 @@ app.get('/api/presets', (req, res) => {
     }
 });
 
-// 파일 업로드 처리 API (조건별 카테고리 자동 분기 적용)
+// 파일 업로드 처리 API
 app.post('/api/upload', upload.fields([
     { name: 'effectFile', maxCount: 1 },
     { name: 'thumbFile', maxCount: 1 }
@@ -311,8 +309,7 @@ app.post('/api/upload', upload.fields([
         const hasEffect = req.files && req.files['effectFile'];
         const hasThumb = req.files && req.files['thumbFile'];
 
-        // 조건 분기: 효과파일 없이 이미지만 단독 업로드된 경우 무조건 'illustration' (단순 일러스트)
-        // 효과파일이 포함된 경우 사용자가 선택한 카테고리(motion 또는 subtitle 등) 반영
+        // 이미지만 단독 업로드된 경우 무조건 'illustration' (단순 일러스트), 효과파일이 있으면 선택한 카테고리 반영
         let category = req.body.category || 'motion';
         if (!hasEffect && hasThumb) {
             category = 'illustration';
