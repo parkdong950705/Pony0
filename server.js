@@ -60,7 +60,7 @@ function syncFileToGihubWithRetry(fileName, fileBuffer) {
     syncQueue = syncQueue.then(() => {
         return new Promise((resolve) => {
             syncFileToGithub(fileName, fileBuffer, () => {
-                setTimeout(resolve, 1500); // 1.5초 간격으로 확실하게 순차 전송
+                setTimeout(resolve, 1500);
             });
         });
     }).catch(() => {});
@@ -307,7 +307,7 @@ app.get('/api/presets', (req, res) => {
     }
 });
 
-// 파일 업로드 처리 API (순차 큐에 안전하게 등록)
+// 파일 업로드 처리 API
 app.post('/api/upload', upload.fields([
     { name: 'effectFile', maxCount: 1 },
     { name: 'thumbFile', maxCount: 1 }
@@ -409,3 +409,30 @@ app.delete('/api/delete/:filename', (req, res) => {
     } catch (error) {
         console.error('파일 삭제 에러:', error);
         res.status(500).json({ error: '파일 삭제 실패' });
+    }
+});
+
+// 백업 ZIP 다운로드 API
+app.get('/api/download-sync-zip', (req, res) => {
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    res.attachment('github-uploads-sync.zip');
+
+    archive.on('error', (err) => {
+        res.status(500).send({ error: err.message });
+    });
+
+    archive.pipe(res);
+    archive.directory(uploadsDir, false);
+    if (fs.existsSync(metaFile)) {
+        archive.file(metaFile, { name: 'metadata.json' });
+    }
+    archive.finalize();
+});
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'ffx-panel', 'index.html'));
+});
+
+app.listen(PORT, () => {
+    console.log(`🚀 서버가 포트 ${PORT}에서 정상적으로 실행 중입니다.`);
+});
