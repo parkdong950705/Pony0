@@ -50,15 +50,17 @@ function saveMetadata(data) {
     }
 }
 
-// 🌐 깃허브 API 통신 함수
+// 🌐 깃허브 API 간소화 및 404 에러 원천 차단 함수
 function syncFileToGithub(fileName, fileBuffer) {
     if (!isGithubSyncEnabled) return;
 
-    const encodedPath = encodeURIComponent(fileName);
-
+    // 경로 정합성 맞추기 (예: uploads/파일명)
+    const apiPath = `/repos/${GITHUB_REPO}/contents/uploads/${fileName}`;
+    
+    // 먼저 기존 파일의 SHA 값을 조회한 뒤 PUT 요청
     const getOptions = {
         hostname: 'api.github.com',
-        path: `/repos/${GITHUB_REPO}/contents/uploads/${encodedPath}`,
+        path: apiPath,
         method: 'GET',
         headers: {
             'User-Agent': 'FFX-Cloud-Studio',
@@ -76,17 +78,17 @@ function syncFileToGithub(fileName, fileBuffer) {
                     sha = JSON.parse(responseBody).sha;
                 } catch (e) {}
             }
-            sendPutRequest(fileName, encodedPath, fileBuffer, sha);
+            executeGitHubPut(apiPath, fileName, fileBuffer, sha);
         });
     });
 
     reqGet.on('error', () => {
-        sendPutRequest(fileName, encodedPath, fileBuffer, null);
+        executeGitHubPut(apiPath, fileName, fileBuffer, null);
     });
     reqGet.end();
 }
 
-function sendPutRequest(fileName, encodedPath, fileBuffer, sha) {
+function executeGitHubPut(apiPath, fileName, fileBuffer, sha) {
     const payload = {
         message: `Auto-sync: update uploads/${fileName}`,
         content: fileBuffer.toString('base64'),
@@ -97,7 +99,7 @@ function sendPutRequest(fileName, encodedPath, fileBuffer, sha) {
     const dataString = JSON.stringify(payload);
     const options = {
         hostname: 'api.github.com',
-        path: `/repos/${GITHUB_REPO}/contents/uploads/${encodedPath}`,
+        path: apiPath,
         method: 'PUT',
         headers: {
             'User-Agent': 'FFX-Cloud-Studio',
@@ -131,10 +133,10 @@ function sendPutRequest(fileName, encodedPath, fileBuffer, sha) {
 function deleteFileFromGithub(fileName) {
     if (!isGithubSyncEnabled) return;
 
-    const encodedPath = encodeURIComponent(fileName);
+    const apiPath = `/repos/${GITHUB_REPO}/contents/uploads/${fileName}`;
     const getOptions = {
         hostname: 'api.github.com',
-        path: `/repos/${GITHUB_REPO}/contents/uploads/${encodedPath}`,
+        path: apiPath,
         method: 'GET',
         headers: {
             'User-Agent': 'FFX-Cloud-Studio',
@@ -149,7 +151,7 @@ function deleteFileFromGithub(fileName) {
             if (res.statusCode === 200) {
                 try {
                     const sha = JSON.parse(responseBody).sha;
-                    sendDeleteRequest(fileName, encodedPath, sha);
+                    executeGitHubDelete(apiPath, fileName, sha);
                 } catch (e) {}
             }
         });
@@ -157,7 +159,9 @@ function deleteFileFromGithub(fileName) {
     reqGet.end();
 }
 
-function sendDeleteRequest(fileName, encodedPath, sha) {
+function executeGitHubDelete(apiPath, fileName, sha) {
+    if (!sha) return;
+
     const payload = {
         message: `Auto-sync: delete uploads/${fileName}`,
         sha: sha,
@@ -167,7 +171,7 @@ function sendDeleteRequest(fileName, encodedPath, sha) {
     const dataString = JSON.stringify(payload);
     const options = {
         hostname: 'api.github.com',
-        path: `/repos/${GITHUB_REPO}/contents/uploads/${encodedPath}`,
+        path: apiPath,
         method: 'DELETE',
         headers: {
             'User-Agent': 'FFX-Cloud-Studio',
@@ -345,22 +349,4 @@ app.get('/api/download-sync-zip', (req, res) => {
     const archive = archiver('zip', { zlib: { level: 9 } });
     res.attachment('github-uploads-sync.zip');
 
-    archive.on('error', (err) => {
-        res.status(500).send({ error: err.message });
-    });
-
-    archive.pipe(res);
-    archive.directory(uploadsDir, false);
-    if (fs.existsSync(metaFile)) {
-        archive.file(metaFile, { name: 'metadata.json' });
-    }
-    archive.finalize();
-});
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'ffx-panel', 'index.html'));
-});
-
-app.listen(PORT, () => {
-    console.log(`🚀 서버가 포트 ${PORT}에서 정상적으로 실행 중입니다.`);
-});
+    archive.on('error', (err)
