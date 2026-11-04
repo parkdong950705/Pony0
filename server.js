@@ -319,4 +319,48 @@ app.delete('/api/delete/:filename', (req, res) => {
 
         const files = fs.readdirSync(uploadsDir);
         files.forEach(file => {
-            if (path.parse(file).name === baseName && file.match(/\.(jpg
+            if (path.parse(file).name === baseName && file.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+                const thumbPath = path.join(uploadsDir, file);
+                if (fs.existsSync(thumbPath)) {
+                    fs.unlinkSync(thumbPath);
+                    deleteFileFromGithub(file);
+                }
+            }
+        });
+
+        const metadata = loadMetadata();
+        delete metadata[filename];
+        delete metadata[baseName];
+        saveMetadata(metadata);
+
+        res.json({ success: true, message: '파일이 성공적으로 삭제되었습니다.' });
+    } catch (error) {
+        console.error('파일 삭제 에러:', error);
+        res.status(500).json({ error: '파일 삭제 실패' });
+    }
+});
+
+// 백업 ZIP 다운로드 API
+app.get('/api/download-sync-zip', (req, res) => {
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    res.attachment('github-uploads-sync.zip');
+
+    archive.on('error', (err) => {
+        res.status(500).send({ error: err.message });
+    });
+
+    archive.pipe(res);
+    archive.directory(uploadsDir, false);
+    if (fs.existsSync(metaFile)) {
+        archive.file(metaFile, { name: 'metadata.json' });
+    }
+    archive.finalize();
+});
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'ffx-panel', 'index.html'));
+});
+
+app.listen(PORT, () => {
+    console.log(`🚀 서버가 포트 ${PORT}에서 정상적으로 실행 중입니다.`);
+});
