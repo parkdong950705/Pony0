@@ -241,7 +241,7 @@ app.get('/main.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'ffx-panel', 'main.js'));
 });
 
-// 프리셋 목록 조회 API (함께 업로드된 썸네일 매핑 강화)
+// 프리셋 목록 조회 API (metadata.json 노출 원천 차단)
 app.get('/api/presets', (req, res) => {
     try {
         if (!fs.existsSync(uploadsDir)) {
@@ -249,27 +249,28 @@ app.get('/api/presets', (req, res) => {
         }
         
         const files = fs.readdirSync(uploadsDir);
-        const effectFiles = files.filter(file => !file.match(/\.(jpg|jpeg|png|gif|webp)$/i) && file !== '.gitkeep');
-        const imageFiles = files.filter(file => file.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+        // metadata.json 및 시스템 파일(.gitkeep 등)을 라이브러리 목록에서 철저히 제외
+        const validFiles = files.filter(file => file !== 'metadata.json' && file !== '.gitkeep');
+        
+        const effectFiles = validFiles.filter(file => !file.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+        const imageFiles = validFiles.filter(file => file.match(/\.(jpg|jpeg|png|gif|webp)$/i));
         const metadata = loadMetadata();
         
         let presets = [];
         let idCounter = 1;
-        let matchedImages = new Set(); // 독립 이미지로 처리할지 여부를 판별하기 위한 세트
+        let matchedImages = new Set();
 
-        // 1. 효과 파일 처리 (메타데이터에 기록된 지정 썸네일 우선 매칭, 없으면 이름 일치 썸네일 매칭)
+        // 1. 효과 파일 처리 (지정 썸네일 또는 이름 일치 썸네일 매칭)
         effectFiles.forEach((file) => {
             const baseName = path.parse(file).name;
             let thumbFile = 'default-thumb.png';
             
-            // 메타데이터에 이 효과 파일과 짝지어진 썸네일 이름이 기록되어 있는지 확인
             const linkedThumb = metadata[`thumb_${file}`] || metadata[`thumb_${baseName}`];
             
             if (linkedThumb && imageFiles.includes(linkedThumb)) {
                 thumbFile = linkedThumb;
                 matchedImages.add(linkedThumb);
             } else {
-                // 이름이 정확히 일치하는 이미지 찾기
                 const exactThumb = imageFiles.find(f => path.parse(f).name === baseName);
                 if (exactThumb) {
                     thumbFile = exactThumb;
@@ -309,7 +310,7 @@ app.get('/api/presets', (req, res) => {
     }
 });
 
-// 파일 업로드 처리 API (효과파일과 썸네일을 한 세트로 강력하게 묶어줌)
+// 파일 업로드 처리 API
 app.post('/api/upload', upload.fields([
     { name: 'effectFile', maxCount: 1 },
     { name: 'thumbFile', maxCount: 1 }
@@ -319,7 +320,6 @@ app.post('/api/upload', upload.fields([
         const hasThumb = req.files && req.files['thumbFile'];
 
         let category = req.body.category || 'motion';
-        // 이미지만 단독 업로드된 경우 무조건 'illustration'
         if (!hasEffect && hasThumb) {
             category = 'illustration';
         }
@@ -356,7 +356,6 @@ app.post('/api/upload', upload.fields([
             }
         }
 
-        // 효과 파일과 썸네일이 같이 업로드된 경우, 이 두 파일이 한 세트임을 메타데이터에 명시적으로 연결
         if (effName && thumbName) {
             metadata[`thumb_${effName}`] = thumbName;
             metadata[`thumb_${path.parse(effName).name}`] = thumbName;
@@ -370,7 +369,7 @@ app.post('/api/upload', upload.fields([
     }
 });
 
-// 파일 삭제 API (연관된 썸네일 및 메타데이터 동시 제거)
+// 파일 삭제 API
 app.delete('/api/delete/:filename', (req, res) => {
     try {
         const filename = decodeURIComponent(req.params.filename);
@@ -380,13 +379,11 @@ app.delete('/api/delete/:filename', (req, res) => {
         const metadata = loadMetadata();
         let targetToDelete = [filename];
 
-        // 삭제하려는 파일이 효과 파일일 경우, 짝지어진 썸네일도 함께 삭제 목록에 추가
         const linkedThumb = metadata[`thumb_${filename}`] || metadata[`thumb_${baseName}`];
         if (linkedThumb) {
             targetToDelete.push(linkedThumb);
         }
 
-        // 혹시 이름이 같은 썸네일이 있다면 함께 타겟에 포함
         const files = fs.readdirSync(uploadsDir);
         files.forEach(file => {
             if (path.parse(file).name === baseName && file.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
@@ -396,7 +393,6 @@ app.delete('/api/delete/:filename', (req, res) => {
             }
         });
 
-        // 실제 파일 삭제 및 깃허브 연동
         targetToDelete.forEach(targetFile => {
             const targetPath = path.join(uploadsDir, targetFile);
             if (fs.existsSync(targetPath)) {
