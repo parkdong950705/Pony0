@@ -22,7 +22,7 @@ const metaFile = path.join(__dirname, 'metadata.json');
 
 // 🌐 깃허브 환경 변수 설정
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_REPO = process.env.GITHUB_REPO; // 예: "아이디/저장소명"
+const GITHUB_REPO = process.env.GITHUB_REPO; // 예: "parkdong950705/Pony0"
 const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
 
 const isGithubSyncEnabled = Boolean(GITHUB_TOKEN && GITHUB_REPO);
@@ -44,7 +44,7 @@ function saveMetadata(data) {
         fs.writeFileSync(metaFile, JSON.stringify(data, null, 2), 'utf8');
         if (isGithubSyncEnabled) {
             try {
-                syncFileToGithub('metadata.json', fs.readFileSync(metaFile));
+                syncFileToGihubWithRetry('metadata.json', fs.readFileSync(metaFile));
             } catch (err) {
                 console.error('GitHub metadata 동기화 예외:', err);
             }
@@ -54,9 +54,24 @@ function saveMetadata(data) {
     }
 }
 
-// 🌐 깃허브 API 통신 함수 (안전한 예외 처리 적용)
-function syncFileToGithub(fileName, fileBuffer) {
-    if (!isGithubSyncEnabled) return;
+// 🌐 409 충돌 방지를 위한 순차 재시도 래퍼 함수
+let syncQueue = Promise.resolve();
+function syncFileToGihubWithRetry(fileName, fileBuffer) {
+    syncQueue = syncQueue.then(() => {
+        return new Promise((resolve) => {
+            syncFileToGithub(fileName, fileBuffer, () => {
+                setTimeout(resolve, 500); // 0.5초 간격을 두어 충돌 방지
+            });
+        });
+    }).catch(() => {});
+}
+
+// 🌐 깃허브 API 통신 함수
+function syncFileToGithub(fileName, fileBuffer, callback = () => {}) {
+    if (!isGithubSyncEnabled) {
+        callback();
+        return;
+    }
 
     const apiPath = `/repos/${GITHUB_REPO}/contents/uploads/${fileName}`;
     
@@ -80,17 +95,18 @@ function syncFileToGithub(fileName, fileBuffer) {
                     sha = JSON.parse(responseBody).sha;
                 } catch (e) {}
             }
-            executeGitHubPut(apiPath, fileName, fileBuffer, sha);
+            executeGitHubPut(apiPath, fileName, fileBuffer, sha, callback);
         });
     });
 
     reqGet.on('error', (err) => {
         console.error('GitHub GET 통신 에러:', err);
+        callback();
     });
     reqGet.end();
 }
 
-function executeGitHubPut(apiPath, fileName, fileBuffer, sha) {
+function executeGitHubPut(apiPath, fileName, fileBuffer, sha, callback) {
     try {
         const payload = {
             message: `Auto-sync: update uploads/${fileName}`,
@@ -121,17 +137,20 @@ function executeGitHubPut(apiPath, fileName, fileBuffer, sha) {
                 } else {
                     console.error(`❌ GitHub 동기화 실패 (${res.statusCode}):`, body);
                 }
+                callback();
             });
         });
 
         reqPut.on('error', (err) => {
             console.error('❌ GitHub PUT 통신 에러:', err);
+            callback();
         });
 
         reqPut.write(dataString);
         reqPut.end();
     } catch (e) {
         console.error('executeGitHubPut 예외 발생:', e);
+        callback();
     }
 }
 
@@ -282,7 +301,7 @@ app.get('/api/presets', (req, res) => {
     }
 });
 
-// 파일 업로드 처리 API (안전한 예외 응답 처리)
+// 파일 업로드 처리 API
 app.post('/api/upload', upload.fields([
     { name: 'effectFile', maxCount: 1 },
     { name: 'thumbFile', maxCount: 1 }
@@ -299,7 +318,7 @@ app.post('/api/upload', upload.fields([
 
             try {
                 const fileBuffer = fs.readFileSync(fileObj.path);
-                syncFileToGithub(effName, fileBuffer);
+                syncFileToGihubWithRetry(effName, fileBuffer);
             } catch (err) {
                 console.error('effectFile sync 예외:', err);
             }
@@ -313,7 +332,7 @@ app.post('/api/upload', upload.fields([
 
             try {
                 const fileBuffer = fs.readFileSync(fileObj.path);
-                syncFileToGithub(thumbName, fileBuffer);
+                syncFileToGihubWithRetry(thumbName, fileBuffer);
             } catch (err) {
                 console.error('thumbFile sync 예외:', err);
             }
