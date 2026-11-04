@@ -50,11 +50,10 @@ function saveMetadata(data) {
     }
 }
 
-// 🌐 깃허브 API 통신 함수 (한글 및 특수문자 에러 완벽 해결)
+// 🌐 깃허브 API 통신 함수
 function syncFileToGithub(fileName, fileBuffer) {
     if (!isGithubSyncEnabled) return;
 
-    // 한글 및 특수문자 파일명을 안전하게 인코딩
     const encodedPath = encodeURIComponent(fileName);
 
     const getOptions = {
@@ -167,4 +166,157 @@ function sendDeleteRequest(fileName, encodedPath, sha) {
 
     const dataString = JSON.stringify(payload);
     const options = {
-        hostname:
+        hostname: 'api.github.com',
+        path: `/repos/${GITHUB_REPO}/contents/uploads/${encodedPath}`,
+        method: 'DELETE',
+        headers: {
+            'User-Agent': 'FFX-Cloud-Studio',
+            'Authorization': `token ${GITHUB_TOKEN}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(dataString)
+        }
+    };
+
+    const reqDel = https.request(options, (res) => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+            console.log(`🗑️ GitHub 파일 삭제 동기화 성공: uploads/${fileName}`);
+        }
+    });
+    reqDel.write(dataString);
+    reqDel.end();
+}
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+        const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+        cb(null, decodedName);
+    }
+});
+const upload = multer({ storage: storage });
+
+app.use('/uploads', express.static(uploadsDir));
+app.use(express.static(path.join(__dirname, 'ffx-panel')));
+
+app.get('/style.css', (req, res) => {
+    res.sendFile(path.join(__dirname, 'ffx-panel', 'style.css'));
+});
+
+app.get('/main.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'ffx-panel', 'main.js'));
+});
+
+// 프리셋 목록 조회 API
+app.get('/api/presets', (req, res) => {
+    try {
+        if (!fs.existsSync(uploadsDir)) {
+            return res.json([]);
+        }
+        
+        const files = fs.readdirSync(uploadsDir);
+        const effectFiles = files.filter(file => !file.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+        const imageFiles = files.filter(file => file.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+        const metadata = loadMetadata();
+        
+        let presets = [];
+        let idCounter = 1;
+
+        effectFiles.forEach((file, index) => {
+            const baseName = path.parse(file).name;
+            let thumbFile = 'default-thumb.png';
+            
+            const exactThumb = imageFiles.find(f => path.parse(f).name === baseName);
+            if (exactThumb) {
+                thumbFile = exactThumb;
+            } else if (imageFiles[index]) {
+                thumbFile = imageFiles[index];
+            } else if (imageFiles.length > 0) {
+                thumbFile = imageFiles[0];
+            }
+
+            let category = metadata[file] || metadata[baseName] || 'motion';
+
+            presets.push({
+                id: idCounter++,
+                NAME: file,
+                THUMBNAIL: thumbFile,
+                CATEGORY: category
+            });
+        });
+
+        const matchedThumbnames = presets.map(p => p.THUMBNAIL);
+        const orphanImages = imageFiles.filter(img => !matchedThumbnames.includes(img));
+
+        orphanImages.forEach((imgFile) => {
+            const baseName = path.parse(imgFile).name;
+            let category = metadata[imgFile] || metadata[baseName] || 'illustration';
+
+            presets.push({
+                id: idCounter++,
+                NAME: imgFile,
+                THUMBNAIL: imgFile,
+                CATEGORY: category
+            });
+        });
+        
+        res.json(presets);
+    } catch (error) {
+        console.error('프리셋 조회 에러:', error);
+        res.status(500).json({ error: '서버 내부 오류가 발생했습니다.' });
+    }
+});
+
+// 파일 업로드 처리 API
+app.post('/api/upload', upload.fields([
+    { name: 'effectFile', maxCount: 1 },
+    { name: 'thumbFile', maxCount: 1 }
+]), (req, res) => {
+    try {
+        const category = req.body.category || 'motion';
+        const metadata = loadMetadata();
+
+        if (req.files['effectFile']) {
+            const fileObj = req.files['effectFile'][0];
+            const effName = Buffer.from(fileObj.originalname, 'latin1').toString('utf8');
+            metadata[effName] = category;
+            metadata[path.parse(effName).name] = category;
+
+            const fileBuffer = fs.readFileSync(fileObj.path);
+            syncFileToGithub(effName, fileBuffer);
+        }
+
+        if (req.files['thumbFile']) {
+            const fileObj = req.files['thumbFile'][0];
+            const thumbName = Buffer.from(fileObj.originalname, 'latin1').toString('utf8');
+            metadata[thumbName] = category;
+            metadata[path.parse(thumbName).name] = category;
+
+            const fileBuffer = fs.readFileSync(fileObj.path);
+            syncFileToGithub(thumbName, fileBuffer);
+        }
+
+        saveMetadata(metadata);
+        res.json({ success: true, message: '성공적으로 업로드되었습니다.', category });
+    } catch (error) {
+        console.error('업로드 처리 에러:', error);
+        res.status(500).json({ error: '파일 업로드 실패' });
+    }
+});
+
+// 파일 삭제 API
+app.delete('/api/delete/:filename', (req, res) => {
+    try {
+        const filename = decodeURIComponent(req.params.filename);
+        const baseName = path.parse(filename).name;
+        const filePath = path.join(uploadsDir, filename);
+
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            deleteFileFromGithub(filename);
+        }
+
+        const files = fs.readdirSync(uploadsDir);
+        files.forEach(file => {
+            if (path.parse(file).name === baseName && file.match(/\.(jpg
