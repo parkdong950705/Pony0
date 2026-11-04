@@ -43,14 +43,18 @@ function saveMetadata(data) {
     try {
         fs.writeFileSync(metaFile, JSON.stringify(data, null, 2), 'utf8');
         if (isGithubSyncEnabled) {
-            syncFileToGithub('metadata.json', fs.readFileSync(metaFile));
+            try {
+                syncFileToGithub('metadata.json', fs.readFileSync(metaFile));
+            } catch (err) {
+                console.error('GitHub metadata 동기화 예외:', err);
+            }
         }
     } catch (e) {
         console.error('메타데이터 저장 실패:', e);
     }
 }
 
-// 🌐 깃허브 API 통신 함수
+// 🌐 깃허브 API 통신 함수 (안전한 예외 처리 적용)
 function syncFileToGithub(fileName, fileBuffer) {
     if (!isGithubSyncEnabled) return;
 
@@ -80,51 +84,55 @@ function syncFileToGithub(fileName, fileBuffer) {
         });
     });
 
-    reqGet.on('error', () => {
-        executeGitHubPut(apiPath, fileName, fileBuffer, null);
+    reqGet.on('error', (err) => {
+        console.error('GitHub GET 통신 에러:', err);
     });
     reqGet.end();
 }
 
 function executeGitHubPut(apiPath, fileName, fileBuffer, sha) {
-    const payload = {
-        message: `Auto-sync: update uploads/${fileName}`,
-        content: fileBuffer.toString('base64'),
-        branch: GITHUB_BRANCH
-    };
-    if (sha) payload.sha = sha;
+    try {
+        const payload = {
+            message: `Auto-sync: update uploads/${fileName}`,
+            content: fileBuffer.toString('base64'),
+            branch: GITHUB_BRANCH
+        };
+        if (sha) payload.sha = sha;
 
-    const dataString = JSON.stringify(payload);
-    const options = {
-        hostname: 'api.github.com',
-        path: apiPath,
-        method: 'PUT',
-        headers: {
-            'User-Agent': 'FFX-Cloud-Studio',
-            'Authorization': `token ${GITHUB_TOKEN}`,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(dataString)
-        }
-    };
-
-    const reqPut = https.request(options, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => {
-            if (res.statusCode >= 200 && res.statusCode < 300) {
-                console.log(`✅ GitHub 동기화 성공: uploads/${fileName}`);
-            } else {
-                console.error(`❌ GitHub 동기화 실패 (${res.statusCode}):`, body);
+        const dataString = JSON.stringify(payload);
+        const options = {
+            hostname: 'api.github.com',
+            path: apiPath,
+            method: 'PUT',
+            headers: {
+                'User-Agent': 'FFX-Cloud-Studio',
+                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(dataString)
             }
+        };
+
+        const reqPut = https.request(options, (res) => {
+            let body = '';
+            res.on('data', chunk => body += chunk);
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    console.log(`✅ GitHub 동기화 성공: uploads/${fileName}`);
+                } else {
+                    console.error(`❌ GitHub 동기화 실패 (${res.statusCode}):`, body);
+                }
+            });
         });
-    });
 
-    reqPut.on('error', (err) => {
-        console.error('❌ GitHub 통신 에러:', err);
-    });
+        reqPut.on('error', (err) => {
+            console.error('❌ GitHub PUT 통신 에러:', err);
+        });
 
-    reqPut.write(dataString);
-    reqPut.end();
+        reqPut.write(dataString);
+        reqPut.end();
+    } catch (e) {
+        console.error('executeGitHubPut 예외 발생:', e);
+    }
 }
 
 // 🌐 깃허브 파일 삭제 연동 함수
@@ -154,38 +162,42 @@ function deleteFileFromGithub(fileName) {
             }
         });
     });
+    reqGet.on('error', () => {});
     reqGet.end();
 }
 
 function executeGitHubDelete(apiPath, fileName, sha) {
     if (!sha) return;
 
-    const payload = {
-        message: `Auto-sync: delete uploads/${fileName}`,
-        sha: sha,
-        branch: GITHUB_BRANCH
-    };
+    try {
+        const payload = {
+            message: `Auto-sync: delete uploads/${fileName}`,
+            sha: sha,
+            branch: GITHUB_BRANCH
+        };
 
-    const dataString = JSON.stringify(payload);
-    const options = {
-        hostname: 'api.github.com',
-        path: apiPath,
-        method: 'DELETE',
-        headers: {
-            'User-Agent': 'FFX-Cloud-Studio',
-            'Authorization': `token ${GITHUB_TOKEN}`,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(dataString)
-        }
-    };
+        const dataString = JSON.stringify(payload);
+        const options = {
+            hostname: 'api.github.com',
+            path: apiPath,
+            method: 'DELETE',
+            headers: {
+                'User-Agent': 'FFX-Cloud-Studio',
+                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(dataString)
+            }
+        };
 
-    const reqDel = https.request(options, (res) => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-            console.log(`🗑️ GitHub 파일 삭제 동기화 성공: uploads/${fileName}`);
-        }
-    });
-    reqDel.write(dataString);
-    reqDel.end();
+        const reqDel = https.request(options, (res) => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+                console.log(`🗑️ GitHub 파일 삭제 동기화 성공: uploads/${fileName}`);
+            }
+        });
+        reqDel.on('error', () => {});
+        reqDel.write(dataString);
+        reqDel.end();
+    } catch (e) {}
 }
 
 const storage = multer.diskStorage({
@@ -218,7 +230,7 @@ app.get('/api/presets', (req, res) => {
         }
         
         const files = fs.readdirSync(uploadsDir);
-        const effectFiles = files.filter(file => !file.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+        const effectFiles = files.filter(file => !file.match(/\.(jpg|jpeg|png|gif|webp)$/i) && file !== '.gitkeep');
         const imageFiles = files.filter(file => file.match(/\.(jpg|jpeg|png|gif|webp)$/i));
         const metadata = loadMetadata();
         
@@ -270,7 +282,7 @@ app.get('/api/presets', (req, res) => {
     }
 });
 
-// 파일 업로드 처리 API
+// 파일 업로드 처리 API (안전한 예외 응답 처리)
 app.post('/api/upload', upload.fields([
     { name: 'effectFile', maxCount: 1 },
     { name: 'thumbFile', maxCount: 1 }
@@ -285,8 +297,12 @@ app.post('/api/upload', upload.fields([
             metadata[effName] = category;
             metadata[path.parse(effName).name] = category;
 
-            const fileBuffer = fs.readFileSync(fileObj.path);
-            syncFileToGithub(effName, fileBuffer);
+            try {
+                const fileBuffer = fs.readFileSync(fileObj.path);
+                syncFileToGithub(effName, fileBuffer);
+            } catch (err) {
+                console.error('effectFile sync 예외:', err);
+            }
         }
 
         if (req.files['thumbFile']) {
@@ -295,8 +311,12 @@ app.post('/api/upload', upload.fields([
             metadata[thumbName] = category;
             metadata[path.parse(thumbName).name] = category;
 
-            const fileBuffer = fs.readFileSync(fileObj.path);
-            syncFileToGithub(thumbName, fileBuffer);
+            try {
+                const fileBuffer = fs.readFileSync(fileObj.path);
+                syncFileToGithub(thumbName, fileBuffer);
+            } catch (err) {
+                console.error('thumbFile sync 예외:', err);
+            }
         }
 
         saveMetadata(metadata);
