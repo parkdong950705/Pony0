@@ -54,13 +54,13 @@ function saveMetadata(data) {
     }
 }
 
-// 🌐 409 충돌 방지를 위한 순차 재시도 래퍼 함수
+// 🌐 충돌 방지를 위한 순차 재시도 래퍼 함수 (간격을 1.5초로 넉넉히 주어 누락 방지)
 let syncQueue = Promise.resolve();
 function syncFileToGihubWithRetry(fileName, fileBuffer) {
     syncQueue = syncQueue.then(() => {
         return new Promise((resolve) => {
             syncFileToGithub(fileName, fileBuffer, () => {
-                setTimeout(resolve, 500);
+                setTimeout(resolve, 1500); // 1.5초 간격으로 확실하게 순차 전송
             });
         });
     }).catch(() => {});
@@ -249,7 +249,6 @@ app.get('/api/presets', (req, res) => {
         }
         
         const files = fs.readdirSync(uploadsDir);
-        // metadata.json 및 시스템 파일(.gitkeep 등)을 라이브러리 목록에서 철저히 제외
         const validFiles = files.filter(file => file !== 'metadata.json' && file !== '.gitkeep');
         
         const effectFiles = validFiles.filter(file => !file.match(/\.(jpg|jpeg|png|gif|webp)$/i));
@@ -260,7 +259,6 @@ app.get('/api/presets', (req, res) => {
         let idCounter = 1;
         let matchedImages = new Set();
 
-        // 1. 효과 파일 처리 (지정 썸네일 또는 이름 일치 썸네일 매칭)
         effectFiles.forEach((file) => {
             const baseName = path.parse(file).name;
             let thumbFile = 'default-thumb.png';
@@ -288,7 +286,6 @@ app.get('/api/presets', (req, res) => {
             });
         });
 
-        // 2. 단독 이미지 파일 처리 (효과 파일과 짝지어지지 않은 이미지만 '단순 일러스트' 카드로 독립 생성)
         imageFiles.forEach((imgFile) => {
             if (!matchedImages.has(imgFile)) {
                 const baseName = path.parse(imgFile).name;
@@ -310,7 +307,7 @@ app.get('/api/presets', (req, res) => {
     }
 });
 
-// 파일 업로드 처리 API
+// 파일 업로드 처리 API (순차 큐에 안전하게 등록)
 app.post('/api/upload', upload.fields([
     { name: 'effectFile', maxCount: 1 },
     { name: 'thumbFile', maxCount: 1 }
@@ -412,30 +409,3 @@ app.delete('/api/delete/:filename', (req, res) => {
     } catch (error) {
         console.error('파일 삭제 에러:', error);
         res.status(500).json({ error: '파일 삭제 실패' });
-    }
-});
-
-// 백업 ZIP 다운로드 API
-app.get('/api/download-sync-zip', (req, res) => {
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    res.attachment('github-uploads-sync.zip');
-
-    archive.on('error', (err) => {
-        res.status(500).send({ error: err.message });
-    });
-
-    archive.pipe(res);
-    archive.directory(uploadsDir, false);
-    if (fs.existsSync(metaFile)) {
-        archive.file(metaFile, { name: 'metadata.json' });
-    }
-    archive.finalize();
-});
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'ffx-panel', 'index.html'));
-});
-
-app.listen(PORT, () => {
-    console.log(`🚀 서버가 포트 ${PORT}에서 정상적으로 실행 중입니다.`);
-});
