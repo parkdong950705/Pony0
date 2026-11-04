@@ -241,7 +241,7 @@ app.get('/main.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'ffx-panel', 'main.js'));
 });
 
-// 프리셋 목록 조회 API (썸네일 중첩 방지 및 1:1 독립 매칭 적용)
+// 프리셋 목록 조회 API (함께 업로드된 썸네일 매핑 강화)
 app.get('/api/presets', (req, res) => {
     try {
         if (!fs.existsSync(uploadsDir)) {
@@ -255,17 +255,26 @@ app.get('/api/presets', (req, res) => {
         
         let presets = [];
         let idCounter = 1;
-        let matchedImages = new Set(); // 썸네일 중첩 방지용 세트
+        let matchedImages = new Set(); // 독립 이미지로 처리할지 여부를 판별하기 위한 세트
 
-        // 1. 효과 파일 처리 (이름이 일치하는 정확한 썸네일만 1:1 매칭)
+        // 1. 효과 파일 처리 (메타데이터에 기록된 지정 썸네일 우선 매칭, 없으면 이름 일치 썸네일 매칭)
         effectFiles.forEach((file) => {
             const baseName = path.parse(file).name;
             let thumbFile = 'default-thumb.png';
             
-            const exactThumb = imageFiles.find(f => path.parse(f).name === baseName);
-            if (exactThumb) {
-                thumbFile = exactThumb;
-                matchedImages.add(exactThumb); // 매칭된 썸네일은 중첩 방지를 위해 기록
+            // 메타데이터에 이 효과 파일과 짝지어진 썸네일 이름이 기록되어 있는지 확인
+            const linkedThumb = metadata[`thumb_${file}`] || metadata[`thumb_${baseName}`];
+            
+            if (linkedThumb && imageFiles.includes(linkedThumb)) {
+                thumbFile = linkedThumb;
+                matchedImages.add(linkedThumb);
+            } else {
+                // 이름이 정확히 일치하는 이미지 찾기
+                const exactThumb = imageFiles.find(f => path.parse(f).name === baseName);
+                if (exactThumb) {
+                    thumbFile = exactThumb;
+                    matchedImages.add(exactThumb);
+                }
             }
 
             let category = metadata[file] || metadata[baseName] || 'motion';
@@ -278,7 +287,7 @@ app.get('/api/presets', (req, res) => {
             });
         });
 
-        // 2. 단독 이미지 파일 처리 (효과 파일과 짝이 없고 단독으로 올라간 이미지만 '단순 일러스트' 세트로 처리)
+        // 2. 단독 이미지 파일 처리 (효과 파일과 짝지어지지 않은 이미지만 '단순 일러스트' 카드로 독립 생성)
         imageFiles.forEach((imgFile) => {
             if (!matchedImages.has(imgFile)) {
                 const baseName = path.parse(imgFile).name;
@@ -300,7 +309,7 @@ app.get('/api/presets', (req, res) => {
     }
 });
 
-// 파일 업로드 처리 API
+// 파일 업로드 처리 API (효과파일과 썸네일을 한 세트로 강력하게 묶어줌)
 app.post('/api/upload', upload.fields([
     { name: 'effectFile', maxCount: 1 },
     { name: 'thumbFile', maxCount: 1 }
@@ -309,17 +318,19 @@ app.post('/api/upload', upload.fields([
         const hasEffect = req.files && req.files['effectFile'];
         const hasThumb = req.files && req.files['thumbFile'];
 
-        // 이미지만 단독 업로드된 경우 무조건 'illustration' (단순 일러스트), 효과파일이 있으면 선택한 카테고리 반영
         let category = req.body.category || 'motion';
+        // 이미지만 단독 업로드된 경우 무조건 'illustration'
         if (!hasEffect && hasThumb) {
             category = 'illustration';
         }
 
         const metadata = loadMetadata();
+        let effName = null;
+        let thumbName = null;
 
         if (hasEffect) {
             const fileObj = req.files['effectFile'][0];
-            const effName = Buffer.from(fileObj.originalname, 'latin1').toString('utf8');
+            effName = Buffer.from(fileObj.originalname, 'latin1').toString('utf8');
             metadata[effName] = category;
             metadata[path.parse(effName).name] = category;
 
@@ -333,7 +344,7 @@ app.post('/api/upload', upload.fields([
 
         if (hasThumb) {
             const fileObj = req.files['thumbFile'][0];
-            const thumbName = Buffer.from(fileObj.originalname, 'latin1').toString('utf8');
+            thumbName = Buffer.from(fileObj.originalname, 'latin1').toString('utf8');
             metadata[thumbName] = category;
             metadata[path.parse(thumbName).name] = category;
 
@@ -345,6 +356,12 @@ app.post('/api/upload', upload.fields([
             }
         }
 
+        // 효과 파일과 썸네일이 같이 업로드된 경우, 이 두 파일이 한 세트임을 메타데이터에 명시적으로 연결
+        if (effName && thumbName) {
+            metadata[`thumb_${effName}`] = thumbName;
+            metadata[`thumb_${path.parse(effName).name}`] = thumbName;
+        }
+
         saveMetadata(metadata);
         res.json({ success: true, message: '성공적으로 업로드되었습니다.', category });
     } catch (error) {
@@ -353,35 +370,49 @@ app.post('/api/upload', upload.fields([
     }
 });
 
-// 파일 삭제 API
+// 파일 삭제 API (연관된 썸네일 및 메타데이터 동시 제거)
 app.delete('/api/delete/:filename', (req, res) => {
     try {
         const filename = decodeURIComponent(req.params.filename);
         const baseName = path.parse(filename).name;
         const filePath = path.join(uploadsDir, filename);
 
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-            deleteFileFromGithub(filename);
+        const metadata = loadMetadata();
+        let targetToDelete = [filename];
+
+        // 삭제하려는 파일이 효과 파일일 경우, 짝지어진 썸네일도 함께 삭제 목록에 추가
+        const linkedThumb = metadata[`thumb_${filename}`] || metadata[`thumb_${baseName}`];
+        if (linkedThumb) {
+            targetToDelete.push(linkedThumb);
         }
 
+        // 혹시 이름이 같은 썸네일이 있다면 함께 타겟에 포함
         const files = fs.readdirSync(uploadsDir);
         files.forEach(file => {
             if (path.parse(file).name === baseName && file.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                const thumbPath = path.join(uploadsDir, file);
-                if (fs.existsSync(thumbPath)) {
-                    fs.unlinkSync(thumbPath);
-                    deleteFileFromGithub(file);
+                if (!targetToDelete.includes(file)) {
+                    targetToDelete.push(file);
                 }
             }
         });
 
-        const metadata = loadMetadata();
+        // 실제 파일 삭제 및 깃허브 연동
+        targetToDelete.forEach(targetFile => {
+            const targetPath = path.join(uploadsDir, targetFile);
+            if (fs.existsSync(targetPath)) {
+                fs.unlinkSync(targetPath);
+                deleteFileFromGithub(targetFile);
+            }
+            delete metadata[targetFile];
+        });
+
         delete metadata[filename];
         delete metadata[baseName];
+        delete metadata[`thumb_${filename}`];
+        delete metadata[`thumb_${baseName}`];
         saveMetadata(metadata);
 
-        res.json({ success: true, message: '파일이 성공적으로 삭제되었습니다.' });
+        res.json({ success: true, message: '파일과 연관 썸네일이 성공적으로 삭제되었습니다.' });
     } catch (error) {
         console.error('파일 삭제 에러:', error);
         res.status(500).json({ error: '파일 삭제 실패' });
