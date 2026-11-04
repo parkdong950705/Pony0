@@ -4,7 +4,6 @@ const cors = require('cors');
 const fs = require('fs');
 const multer = require('multer');
 const archiver = require('archiver');
-const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -20,14 +19,6 @@ if (!fs.existsSync(uploadsDir)) {
 
 const metaFile = path.join(__dirname, 'metadata.json');
 
-// 환경 변수 기반 깃허브 동기화 설정
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_REPO = process.env.GITHUB_REPO; // 형식: "아이디/저장소명"
-const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
-
-const isGithubSyncEnabled = Boolean(GITHUB_TOKEN && GITHUB_REPO);
-console.log(`📌 GitHub 자동 동기화: ${isGithubSyncEnabled ? '켜짐' : '꺼짐 (환경변수 미설정)'}`);
-
 function loadMetadata() {
     try {
         if (fs.existsSync(metaFile)) {
@@ -42,152 +33,9 @@ function loadMetadata() {
 function saveMetadata(data) {
     try {
         fs.writeFileSync(metaFile, JSON.stringify(data, null, 2), 'utf8');
-        if (isGithubSyncEnabled) {
-            syncFileToGithub('metadata.json', fs.readFileSync(metaFile));
-        }
     } catch (e) {
         console.error('메타데이터 저장 실패:', e);
     }
-}
-
-// 🌐 깃허브 API를 통해 파일 업로드/수정 (PUT)
-function syncFileToGithub(filePathInRepo, fileBuffer) {
-    if (!isGithubSyncEnabled) return;
-
-    const dataString = JSON.stringify({
-        message: `Auto-sync: update ${filePathInRepo}`,
-        content: fileBuffer.toString('base64'),
-        branch: GITHUB_BRANCH
-    });
-
-    // 기존 파일의 sha 값을 얻기 위해 먼저 GET 요청 (선택사항이나 충돌 방지용으로 안전)
-    const options = {
-        hostname: 'api.github.com',
-        path: `/repos/${GITHUB_REPO}/contents/uploads/${filePathInRepo}`,
-        method: 'GET',
-        headers: {
-            'User-Agent': 'FFX-Cloud-Studio',
-            'Authorization': `token ${GITHUB_TOKEN}`
-        }
-    };
-
-    const reqGet = https.request(options, (res) => {
-        let responseBody = '';
-        res.on('data', chunk => responseBody += chunk);
-        res.on('end', () => {
-            let sha = null;
-            if (res.statusCode === 200) {
-                try {
-                    sha = JSON.parse(responseBody).sha;
-                } catch (e) {}
-            }
-            sendPutRequest(filePathInRepo, fileBuffer, sha);
-        });
-    });
-
-    reqGet.on('error', () => {
-        sendPutRequest(filePathInRepo, fileBuffer, null);
-    });
-    reqGet.end();
-}
-
-function sendPutRequest(filePathInRepo, fileBuffer, sha) {
-    const payload = {
-        message: `Auto-sync: update uploads/${filePathInRepo}`,
-        content: fileBuffer.toString('base64'),
-        branch: GITHUB_BRANCH
-    };
-    if (sha) payload.sha = sha;
-
-    const dataString = JSON.stringify(payload);
-    const options = {
-        hostname: 'api.github.com',
-        path: `/repos/${GITHUB_REPO}/contents/uploads/${filePathInRepo}`,
-        method: 'PUT',
-        headers: {
-            'User-Agent': 'FFX-Cloud-Studio',
-            'Authorization': `token ${GITHUB_TOKEN}`,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(dataString)
-        }
-    };
-
-    const reqPut = https.request(options, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => {
-            if (res.statusCode >= 200 && res.statusCode < 300) {
-                console.log(`✅ GitHub 동기화 성공: uploads/${filePathInRepo}`);
-            } else {
-                console.error(`❌ GitHub 동기화 실패 (${res.statusCode}):`, body);
-            }
-        });
-    });
-
-    reqPut.on('error', (err) => {
-        console.error('❌ GitHub 통신 에러:', err);
-    });
-
-    reqPut.write(dataString);
-    reqPut.end();
-}
-
-// 🌐 깃허브 API를 통해 파일 삭제 (DELETE)
-function deleteFileFromGithub(filePathInRepo) {
-    if (!isGithubSyncEnabled) return;
-
-    const getOptions = {
-        hostname: 'api.github.com',
-        path: `/repos/${GITHUB_REPO}/contents/uploads/${filePathInRepo}`,
-        method: 'GET',
-        headers: {
-            'User-Agent': 'FFX-Cloud-Studio',
-            'Authorization': `token ${GITHUB_TOKEN}`
-        }
-    };
-
-    const reqGet = https.request(getOptions, (res) => {
-        let responseBody = '';
-        res.on('data', chunk => responseBody += chunk);
-        res.on('end', () => {
-            if (res.statusCode === 200) {
-                try {
-                    const sha = JSON.parse(responseBody).sha;
-                    sendDeleteRequest(filePathInRepo, sha);
-                } catch (e) {}
-            }
-        });
-    });
-    reqGet.end();
-}
-
-function sendDeleteRequest(filePathInRepo, sha) {
-    const payload = {
-        message: `Auto-sync: delete uploads/${filePathInRepo}`,
-        sha: sha,
-        branch: GITHUB_BRANCH
-    };
-
-    const dataString = JSON.stringify(payload);
-    const options = {
-        hostname: 'api.github.com',
-        path: `/repos/${GITHUB_REPO}/contents/uploads/${filePathInRepo}`,
-        method: 'DELETE',
-        headers: {
-            'User-Agent': 'FFX-Cloud-Studio',
-            'Authorization': `token ${GITHUB_TOKEN}`,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(dataString)
-        }
-    };
-
-    const reqDel = https.request(options, (res) => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-            console.log(`🗑️ GitHub 파일 삭제 동기화 성공: uploads/${filePathInRepo}`);
-        }
-    });
-    reqDel.write(dataString);
-    reqDel.end();
 }
 
 const storage = multer.diskStorage({
@@ -212,7 +60,7 @@ app.get('/main.js', (req, res) => {
     res.sendFile(path.join(__dirname, 'ffx-panel', 'main.js'));
 });
 
-// 프리셋 목록 조회 API
+// 프리셋 및 이미지 목록 조회 API
 app.get('/api/presets', (req, res) => {
     try {
         if (!fs.existsSync(uploadsDir)) {
@@ -272,7 +120,7 @@ app.get('/api/presets', (req, res) => {
     }
 });
 
-// 파일 업로드 처리 API (깃허브 자동 푸시 연동)
+// 파일 업로드 처리 API (한글 파일명 및 특수문자 에러 완벽 해결)
 app.post('/api/upload', upload.fields([
     { name: 'effectFile', maxCount: 1 },
     { name: 'thumbFile', maxCount: 1 }
@@ -282,25 +130,16 @@ app.post('/api/upload', upload.fields([
         const metadata = loadMetadata();
 
         if (req.files['effectFile']) {
-            const fileObj = req.files['effectFile'][0];
-            const effName = fileObj.originalname;
-            metadata[effName] = category;
-            metadata[path.parse(effName).name] = category;
-
-            // 깃허브 실시간 푸시
-            const fileBuffer = fs.readFileSync(fileObj.path);
-            syncFileToGithub(effName, fileBuffer);
+            const effName = req.files['effectFile'][0].originalname;
+            const decodedEffName = Buffer.from(effName, 'latin1').toString('utf8');
+            metadata[decodedEffName] = category;
+            metadata[path.parse(decodedEffName).name] = category;
         }
-
         if (req.files['thumbFile']) {
-            const fileObj = req.files['thumbFile'][0];
-            const thumbName = fileObj.originalname;
-            metadata[thumbName] = category;
-            metadata[path.parse(thumbName).name] = category;
-
-            // 깃허브 실시간 푸시
-            const fileBuffer = fs.readFileSync(fileObj.path);
-            syncFileToGithub(thumbName, fileBuffer);
+            const thumbName = req.files['thumbFile'][0].originalname;
+            const decodedThumbName = Buffer.from(thumbName, 'latin1').toString('utf8');
+            metadata[decodedThumbName] = category;
+            metadata[path.parse(decodedThumbName).name] = category;
         }
 
         saveMetadata(metadata);
@@ -311,7 +150,7 @@ app.post('/api/upload', upload.fields([
     }
 });
 
-// 파일 삭제 API (깃허브 연동 삭제)
+// 파일 삭제 API (효과 파일 및 썸네일 동시 삭제)
 app.delete('/api/delete/:filename', (req, res) => {
     try {
         const filename = decodeURIComponent(req.params.filename);
@@ -320,7 +159,6 @@ app.delete('/api/delete/:filename', (req, res) => {
 
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
-            deleteFileFromGithub(filename);
         }
 
         const files = fs.readdirSync(uploadsDir);
@@ -329,7 +167,6 @@ app.delete('/api/delete/:filename', (req, res) => {
                 const thumbPath = path.join(uploadsDir, file);
                 if (fs.existsSync(thumbPath)) {
                     fs.unlinkSync(thumbPath);
-                    deleteFileFromGithub(file);
                 }
             }
         });
@@ -346,7 +183,7 @@ app.delete('/api/delete/:filename', (req, res) => {
     }
 });
 
-// 백업 ZIP 다운로드 API
+// 깃허브 백업용 ZIP 다운로드 API
 app.get('/api/download-sync-zip', (req, res) => {
     const archive = archiver('zip', { zlib: { level: 9 } });
     res.attachment('github-uploads-sync.zip');
