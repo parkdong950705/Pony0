@@ -1,0 +1,12 @@
+parkdong9507_high = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-osaka-1.oraclecloud.com))(connect_data=(service_name=g93568a8913d7bf_parkdong9507_high.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+parkdong9507_medium = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-osaka-1.oraclecloud.com))(connect_data=(service_name=g93568a8913d7bf_parkdong9507_medium.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+parkdong9507_low = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-osaka-1.oraclecloud.com))(connect_data=(service_name=g93568a8913d7bf_parkdong9507_low.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+parkdong9507_tp = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-osaka-1.oraclecloud.com))(connect_data=(service_name=g93568a8913d7bf_parkdong9507_tp.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+parkdong9507_tpurgent = (description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=adb.ap-osaka-1.oraclecloud.com))(connect_data=(service_name=g93568a8913d7bf_parkdong9507_tpurgent.adb.oraclecloud.com))(security=(ssl_server_dn_match=yes)))
+
+
+

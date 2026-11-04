@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>FFX Cloud Studio</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="tab-container">
+        <button class="tab-btn active" data-tab="tab-presets">🎬 프리셋 라이브러리</button>
+    </div>
+
+    <div id="tab-presets" class="tab-content active">
+        <div class="section-card">
+            <h2>☁️ 프리셋 & 썸네일 업로드</h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                <div>
+                    <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">1. 효과 파일 (.ffx / .mogrt)</label>
+                    <button class="btn secondary" id="btn-select-preset" style="width: 100%;">📦 파일 선택</button>
+                    <span id="preset-file-name" style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 4px;">선택된 파일 없음</span>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">2. 썸네일 이미지</label>
+                    <button class="btn secondary" id="btn-select-thumb" style="width: 100%;">🖼️ 썸네일 선택</button>
+                    <span id="thumb-file-name" style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 4px;">선택된 이미지 없음</span>
+                </div>
+            </div>
+
+            <input type="file" id="ffx-file-input" accept=".ffx,.mogrt" style="display: none;">
+            <input type="file" id="thumb-file-input" accept="image/*" style="display: none;">
+
+            <button class="btn primary" id="btn-upload-submit" style="width: 100%; margin-top: 8px;">🚀 클라우드에 업로드하기</button>
+
+            <div id="upload-progress-container" style="display: none; margin-top: 15px;">
+                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; color: #fff;">
+                    <span id="upload-status-text">업로드 중...</span>
+                    <span id="upload-percent">0%</span>
+                </div>
+                <div style="width: 100%; background-color: #333; border-radius: 4px; overflow: hidden; height: 8px;">
+                    <div id="upload-progress-bar" style="width: 0%; height: 100%; background-color: #1473e6; transition: width 0.2s;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h2 style="margin: 0;">📦 클라우드 아이콘 라이브러리</h2>
+                <button class="icon-btn" id="btn-refresh" title="새로고침">🔄</button>
+            </div>
+            <div class="search-box-wrapper" style="margin-bottom: 15px;">
+                <input type="text" id="preset-search" placeholder="프리셋 검색...">
+            </div>
+            <div id="preset-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;">
+                <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 20px;">목록 로딩 중...</div>
+            </div>
+        </div>
+    </div>
+    <script src="main.js"></script>
+</body>
+</html>
