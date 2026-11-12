@@ -3,8 +3,8 @@
   "Amazing Title Zooms": "motion",
   "AA.36104679.1.jpg": "motion",
   "AA.36104679.1": "motion",
-  "thumb_Amazing Title Zooms.mogrt": "AA.36104679.1.jpg",
-  "thumb_Amazing Title Zooms": "AA.36104679.1.jpg",
+  "thumb_Amazing Title Zooms.mogrt": "맑은매실350 썸네일 단품 1000x1000.jpg",
+  "thumb_Amazing Title Zooms": "맑은매실350 썸네일 단품 1000x1000.jpg",
   "스크린샷 2026-11-04 162446.png": "illustration",
   "스크린샷 2026-11-04 162446": "illustration",
   "스크린샷 2026-11-04 170343.png": "illustration",
@@ -27,10 +27,18 @@
       "effectFile": null,
       "thumbnailFile": "스크린샷 2026-11-04 163855.png",
       "category": "illustration"
+    },
+    "group_1794447928594_58rlv2": {
+      "uploadedAt": "2026-11-12T01:45:28.594Z",
+      "effectFile": "Amazing Title Zooms.mogrt",
+      "thumbnailFile": "맑은매실350 썸네일 단품 1000x1000.jpg",
+      "category": "motion"
     }
   },
   "스크린샷 2026-11-04 161329.png": "illustration",
   "스크린샷 2026-11-04 161329": "illustration",
   "스크린샷 2026-11-04 163855.png": "illustration",
-  "스크린샷 2026-11-04 163855": "illustration"
+  "스크린샷 2026-11-04 163855": "illustration",
+  "맑은매실350 썸네일 단품 1000x1000.jpg": "motion",
+  "맑은매실350 썸네일 단품 1000x1000": "motion"
 }
